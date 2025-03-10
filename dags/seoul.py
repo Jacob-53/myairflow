@@ -21,7 +21,12 @@ with DAG(
         bash_command="""
         echo "date ======================> 'date'",
         echo "data_interval_start =======> {{data_interval_start}}",
-        echo "data_interval_end =========> {{data_interval_end}}"           
+        echo "data_interval_end =========> {{data_interval_end}}",
+        echo "ds=========================>{{ds}}",
+        echo "ts=========================>{{ts}}",
+        echo "execution_date ============>{{execution_date}}",
+        echo "prev_execution_date =======>{{prev_execution_date}}",
+        echo "next_execution_date =======>{{next_execution_date}}"      
         """)
     b2_1=BashOperator(task_id="b_2_1", bash_command="echo 2_1")
     b2_2=BashOperator(task_id="b_2_2", bash_command="echo 2_2")
