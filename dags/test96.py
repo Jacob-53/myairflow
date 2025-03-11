@@ -28,7 +28,7 @@ def print_kwargs(**kwargs):
     WEBHOOK_ID = Variable.get('WEBHOOK_ID')
     WEBHOOK_TOKEN = Variable.get('WEBHOOK_TOKEN')
     WEBHOOK_URL = f"https://discordapp.com/api/webhooks/{WEBHOOK_ID}/{WEBHOOK_TOKEN}"
-    data = {"content": f"Test {kwargs['dag'].dag_display_name} {kwargs['task'].task_id} OK Jacob" }
+    data = {"content": f"{kwargs['dag'].dag_display_name} {kwargs['task'].task_id} {kwargs['data_interval_start'].in_tz('Asia/Seoul').strftime('%Y%m%d%H')} OK/Jacob" }
     response = requests.post(WEBHOOK_URL, json=data)
 
     if response.status_code == 204:
@@ -47,7 +47,7 @@ with DAG(
     start = EmptyOperator(task_id="start")
     end = EmptyOperator(task_id="end")
     send_notification = PythonOperator(
-        task_id="sensend_notification",
+        task_id="send_notification",
         python_callable=print_kwargs
     )
     columns_b1 = [
