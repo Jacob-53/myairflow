@@ -23,7 +23,7 @@ local_tz = pendulum.timezone("Asia/Seoul")
 
 def print_kwargs(dag,task, data_interval_start,**kwargs):
     ds = data_interval_start.in_tz('Asia/Seoul').strftime('%Y%m%d%H')
-    message= f"{dag.dag_id} {task.task_id} {ds} OK/Jacob"
+    message= f"{dag.dag_id} {task.task_id} {ds} OK / Jacob"
     send_noti(message)
 
         
