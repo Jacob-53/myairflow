@@ -8,6 +8,7 @@ from airflow.operators.python import PythonOperator
 import requests
 import os
 from airflow.models import Variable
+from myairflow.send_notification import send_noti
 
 def generate_bash_commands(columns: list):
     cmds = []
@@ -20,21 +21,11 @@ def generate_bash_commands(columns: list):
 
 local_tz = pendulum.timezone("Asia/Seoul")
 
-def print_kwargs(**kwargs):
-    print("kwargs====>",kwargs)
-    for k,v in kwargs.items():
-        print(f"{k}:{v}")
+def print_kwargs(dag,task, data_interval_start,**kwargs):
+    ds = data_interval_start.in_tz('Asia/Seoul').strftime('%Y%m%d%H')
+    message= f"{dag.dag_id} {task.task_id} {ds} OK/Jacob"
+    send_noti(message)
 
-    WEBHOOK_ID = Variable.get('WEBHOOK_ID')
-    WEBHOOK_TOKEN = Variable.get('WEBHOOK_TOKEN')
-    WEBHOOK_URL = f"https://discordapp.com/api/webhooks/{WEBHOOK_ID}/{WEBHOOK_TOKEN}"
-    data = {"content": f"{kwargs['dag'].dag_display_name} {kwargs['task'].task_id} {kwargs['data_interval_start'].in_tz('Asia/Seoul').strftime('%Y%m%d%H')} OK/Jacob" }
-    response = requests.post(WEBHOOK_URL, json=data)
-
-    if response.status_code == 204:
-        print("메시지가 성공적으로 전송되었습니다.")
-    else:
-        print(f"에러 발생: {response.status_code}, {response.text}")
         
 # Directed Acyclic Graph
 with DAG(
@@ -48,7 +39,8 @@ with DAG(
     end = EmptyOperator(task_id="end")
     send_notification = PythonOperator(
         task_id="send_notification",
-        python_callable=print_kwargs
+        python_callable=print_kwargs,
+        #trigger_rule=TriggerRule.ONE_FAILED 
     )
     columns_b1 = [
     "data_interval_start", "data_interval_end", "logical_date", "ds", "ds_nodash",
