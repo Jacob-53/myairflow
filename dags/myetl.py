@@ -6,9 +6,10 @@ import pendulum
 from airflow.utils.trigger_rule import TriggerRule
 from airflow.operators.python import PythonOperator
 from airflow.operators.python import PythonVirtualenvOperator
+import os
 
-def abc():
-    pass
+def pause_dags():
+    os.system("airflow dags pause myetl")
 
 def converter_pq(dis_path):
     import pandas as pd
@@ -58,7 +59,8 @@ with DAG(
     ) as dag:
     
     start = EmptyOperator(task_id="start")
-    end = EmptyOperator(task_id="end")
+    end = PythonOperator(task_id="end",
+                       python_callable= pause_dags)
     
     make_data = BashOperator(
                 task_id="mk_data",
@@ -68,13 +70,13 @@ with DAG(
     
     load_data = PythonVirtualenvOperator(task_id="load_data",
                                             python_callable= converter_pq,
-                                            requirements=["git+https://github.com/Jacob-53/myairflow.git@0.1.1"],
+                                            requirements=["pands","pyarrow"],
                                             op_kwargs={"dis_path":"{{data_interval_start.in_tz('Asia/Seoul').strftime('%Y/%m/%d/%H')}}"}
                                             )
     
     agg_data = PythonVirtualenvOperator(task_id="agg_data",
                                             python_callable= converter_agg,
-                                            requirements=["git+https://github.com/Jacob-53/myairflow.git@0.1.1"],
+                                            requirements=["pands","pyarrow"],
                                             op_kwargs={"dis_path":"{{data_interval_start.in_tz('Asia/Seoul').strftime('%Y/%m/%d/%H')}}"}
                                             )
      
