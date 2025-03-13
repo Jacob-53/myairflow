@@ -37,13 +37,13 @@ with DAG(
     
     load_data = PythonVirtualenvOperator(task_id="load_data",
                                             python_callable= f_converter_pq,
-                                            requirements=["git+https://github.com/Jacob-53/myetl.git@0.2.0"],
+                                            requirements=["git+https://github.com/Jacob-53/myetl.git@0.3.0"],
                                             op_kwargs={"dis_path":"{{data_interval_start.in_tz('Asia/Seoul').strftime('%Y/%m/%d/%H')}}"}
                                             )
     
     agg_data = PythonVirtualenvOperator(task_id="agg_data",
                                             python_callable= f_converter_agg,
-                                            requirements=["git+https://github.com/Jacob-53/myetl.git@0.2.0"],
+                                            requirements=["git+https://github.com/Jacob-53/myetl.git@0.3.0"],
                                             op_kwargs={"dis_path":"{{data_interval_start.in_tz('Asia/Seoul').strftime('%Y/%m/%d/%H')}}"}
                                             )
      
