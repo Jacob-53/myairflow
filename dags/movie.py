@@ -26,7 +26,7 @@ with DAG(
     catchup=True,
     tags=['api', 'movie'],
 ) as dag:
-    REQUIREMENTS =["git+https://github.com/Jacob-53/movie.git@0.4.1"]
+    REQUIREMENTS =["git+https://github.com/Jacob-53/movie.git@0.6.1"]
     BASE_DIR = "/home/jacob/data/movies/dailyboxoffice"
 
     def branch_fun(ds_nodash):
@@ -42,9 +42,9 @@ with DAG(
         python_callable=branch_fun
     )
     
-    def fn_merge_data(ds_nodash):
-        print(ds_nodash)
-        
+    def fn_merge_data(ds_nodash,base_path):
+        from movie.api.call import merge_df
+        return merge_df(ds_nodash,base_path)
     
         
     merge_data = PythonVirtualenvOperator(
@@ -52,22 +52,28 @@ with DAG(
         python_callable=fn_merge_data,
         system_site_packages=False,
         requirements=REQUIREMENTS,
+        op_kwargs={"base_path": BASE_DIR}
     )
 
-    def common_get_data(ds_nodash ,BASE_DIR= "/home/jacob/data/movies/dailyboxoffice",partitions=['dt'],url_param={}):
+    def common_get_data(ds_nodash,url_param,base_path):
         from movie.api.call import call_api,list2df,save_df
-        data=call_api(ds_nodash,url_param)
-        df=list2df(data,ds_nodash,url_param)
-        sv=save_df(df,BASE_DIR,partitions,url_param)
-        return sv
-        #print(ds_nodash,url_param,partition)
+        data = call_api(ds_nodash, url_param)
+        df = list2df(data, ds_nodash, url_param)
+        partitions = ['dt']+list(url_param.keys())
+        save_path=save_df(df, base_path, partitions)
+        
+        print("::group::movie df save...")
+        print("save_path--->" + save_path)
+        print("url_param--->" + str(url_param))
+        print("ds_nodash--->" + ds_nodash)
+        print("::endgroup::")
     
     multi_y = PythonVirtualenvOperator(
         task_id='multi.y',
         python_callable=common_get_data,
         system_site_packages=False,
         requirements=REQUIREMENTS,
-        op_kwargs={"url_param":{"multiMovieYn":"Y"},"ds_nodash":"{{ds_nodash}}"}
+        op_kwargs={"url_param":{"multiMovieYn":"Y"},"base_path": BASE_DIR}
     )
 
     multi_n = PythonVirtualenvOperator(
@@ -75,7 +81,7 @@ with DAG(
         python_callable=common_get_data,
         system_site_packages=False,
         requirements=REQUIREMENTS,
-        op_kwargs={"url_param":{"multiMovieYn":"N"},"ds_nodash":"{{ds_nodash}}"}
+        op_kwargs={"url_param":{"multiMovieYn":"N"},"base_path": BASE_DIR}
     )
 
     nation_k = PythonVirtualenvOperator(
@@ -83,7 +89,7 @@ with DAG(
         python_callable=common_get_data,
         system_site_packages=False,
         requirements=REQUIREMENTS,
-        op_kwargs={"url_param":{"repNationCd":"K"},"ds_nodash":"{{ds_nodash}}"}
+        op_kwargs={"url_param":{"repNationCd":"K"},"base_path": BASE_DIR}
     )
 
     nation_f = PythonVirtualenvOperator(
@@ -91,7 +97,7 @@ with DAG(
         python_callable=common_get_data,
         system_site_packages=False,
         requirements=REQUIREMENTS,
-        op_kwargs={"url_param":{"repNationCd":"F"},"ds_nodash":"{{ds_nodash}}"}
+        op_kwargs={"url_param":{"repNationCd":"F"},"base_path": BASE_DIR}
     )
     
     no_param = PythonVirtualenvOperator(
@@ -99,12 +105,11 @@ with DAG(
         python_callable=common_get_data,
         system_site_packages=False,
         requirements=REQUIREMENTS,
-        op_kwargs={"url_param":{},"ds_nodash":"{{ds_nodash}}"}
+        op_kwargs={"url_param":{},"base_path": BASE_DIR}
     )
 
     rm_dir = BashOperator(task_id='rm.dir',
-                          bash_command=f"bash rm -rf {BASE_DIR}+/dt={{ds_nodash}}"
-                         
+                          bash_command=f"rm -rf {BASE_DIR}/" + "dt={{ ds_nodash }}"           
     )
 
     echo_task = BashOperator(
