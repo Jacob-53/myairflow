@@ -8,7 +8,7 @@ from airflow.operators.python import (
 )
 from airflow.utils.trigger_rule import TriggerRule
 import os
-
+from airflow.sensors.filesystem import FileSensor
 
 with DAG(
     'movie',
@@ -22,11 +22,11 @@ with DAG(
     description='movie',
     schedule="10 10 * * *",
     start_date=datetime(2024, 1, 1),
-    end_date=datetime(2024, 1, 2),
+    end_date=datetime(2025, 1, 1),
     catchup=True,
     tags=['api', 'movie'],
 ) as dag:
-    REQUIREMENTS =["git+https://github.com/Jacob-53/movie.git@0.6.1"]
+    REQUIREMENTS =["git+https://github.com/Jacob-53/movie.git@0.6.4"]
     BASE_DIR = "/home/jacob/data/movies/dailyboxoffice"
 
     def branch_fun(ds_nodash):
@@ -44,8 +44,11 @@ with DAG(
     
     def fn_merge_data(ds_nodash,base_path):
         from movie.api.call import merge_df
-        return merge_df(ds_nodash,base_path)
-    
+        merge_save_path = merge_df(ds_nodash,base_path)
+        print("::group:: merged movie pq save...")
+        print("merge_save_path--->" + merge_save_path)
+        print("ds_nodash--->" + ds_nodash)
+        print("::endgroup::")
         
     merge_data = PythonVirtualenvOperator(
         task_id='merge.data',
@@ -122,7 +125,13 @@ with DAG(
     get_start = EmptyOperator(task_id='get.start', trigger_rule=TriggerRule.ALL_DONE)
     get_end = EmptyOperator(task_id='get.end')
     
-
+    make_done  = BashOperator(task_id='make_done',
+                              bash_command="""
+                              DONEBASE=/home/jacob/data/movies/done/dailyboxoffice
+                              mkdir -p $DONEBASE/{{ds_nodash}}
+                              touch $DONEBASE/{{ds_nodash}}/_DONE
+                              """
+                              )
     start >> branch_op
 
     branch_op >> rm_dir >> get_start
@@ -130,4 +139,4 @@ with DAG(
     branch_op >> echo_task
     get_start >> [multi_y, multi_n, nation_k, nation_f, no_param] >> get_end
 
-    get_end >> merge_data >> end
+    get_end >> merge_data >> make_done >> end
