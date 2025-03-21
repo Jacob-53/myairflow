@@ -25,11 +25,11 @@ with DAG(
     description='movie after',
     schedule="10 10 * * *",
     start_date = start_date,
-    end_date = datetime(2024, 1, 11),
+    end_date = datetime(2025, 1, 1),
     catchup=True,
     tags=['api', 'movie','sensor'],
 ) as dag:
-    REQUIREMENTS = ["git+https://github.com/Jacob-53/movie.git@0.6.6"]
+    REQUIREMENTS = ["git+https://github.com/Jacob-53/movie.git@0.6.9"]
     BASE_DIR = f"/home/jacob/data/{DAG_ID}"
     start = EmptyOperator(task_id='start')
     end= EmptyOperator(task_id='end')
