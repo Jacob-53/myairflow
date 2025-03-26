@@ -2,6 +2,7 @@ from airflow import DAG
 from datetime import datetime, timedelta
 from airflow.operators.bash import BashOperator
 from airflow.operators.empty import EmptyOperator
+from airflow.operators.python import BranchPythonOperator
 
 DAG_ID = "movie_spark"
 
@@ -21,15 +22,41 @@ with DAG(
     catchup=True,
     tags=["spark", "sbumit", "movie"],
 ) as dag:
-    SPARK_HOME="/Users/jacob/app/spark-3.5.1-bin-hadoop3"
-    SCRIPT_BASE="/Users/jacob/app/spark-3.5.1-bin-hadoop3/bin"
+    SPARK_HOME = "/Users/jacob/app/spark-3.5.1-bin-hadoop3"
+    SCRIPT_BASE = "/Users/jacob/code/myairflow/pyspark"
+    META_PATH = "/Users/jacob/data/movie_spark/meta"
+    RAW_BASE = "/Users/jacob/data/movie_after/dailyboxoffice"
 
     start = EmptyOperator(task_id="start")
-    end = EmptyOperator(task_id="end")
+    end = EmptyOperator(task_id="end", trigger_rule="all_done")
+    
+    def check_exists_meta():
+        import os
+        if os.path.exists(f'{META_PATH}/_SUCCESS'):
+            return append_meta.task_id   
+        else:
+            return create_meta.task_id
+    
+    exists_meta = BranchPythonOperator(
+        task_id="exists.meta",
+        python_callable=check_exists_meta
+    )
 
-    spark_submit = BashOperator(
-        task_id='submit', 
-        bash_command='$SPARK_HOME/bin/spark-submit $SCRIPT_BASE/movie_meta.py {{ ds_nodash }}',
-        env={"SPARK_HOME": SPARK_HOME, "SCRIPT_BASE": SCRIPT_BASE}
+    append_meta = BashOperator(
+        task_id='append.meta', 
+        bash_command="$SPARK_HOME/bin/spark-submit $SCRIPT_BASE/movie_meta.py $RAW_BASE/dt={{ ds_nodash }} append $META_PATH",
+        env={"SPARK_HOME": SPARK_HOME, "SCRIPT_BASE": SCRIPT_BASE, "META_PATH" : META_PATH, "RAW_BASE" : RAW_BASE},
+        append_env = True
         )
-    start >> spark_submit >> end
+    
+    create_meta = BashOperator(
+        task_id='create.meta',
+        bash_command="""
+        echo $JAVA_HOME
+        $SPARK_HOME/bin/spark-submit $SCRIPT_BASE/movie_meta.py $RAW_BASE/dt={{ ds_nodash }} create $META_PATH""",
+        env={"SPARK_HOME": SPARK_HOME, "SCRIPT_BASE": SCRIPT_BASE, "META_PATH" : META_PATH, "RAW_BASE" : RAW_BASE},
+        append_env = True
+        )
+    
+    start >> exists_meta >> append_meta >> end
+    exists_meta >> create_meta >> end
