@@ -15,10 +15,10 @@ with DAG(
     },
     max_active_runs=1,
     max_active_tasks=5,
-    description="movie spark sbumit",
+    description="movie spark submit",
     schedule="10 10 * * *",
     start_date=datetime(2024, 1, 1),
-    end_date=datetime(2024, 1, 2),
+    end_date=datetime(2025, 1, 1),
     catchup=True,
     tags=["spark", "sbumit", "movie"],
 ) as dag:

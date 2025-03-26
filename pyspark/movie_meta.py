@@ -1,103 +1,114 @@
-from pyspark.sql import SparkSession
+from pyspark.sql import SparkSession, DataFrame
 import sys
 import logging
 
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    # handlers=[logging.StreamHandler(sys.stdout)]  # stdout으로 출력
+)
+
 spark = SparkSession.builder.appName("movie_meta").getOrCreate()
 
-# load_dt = sys.argv[1]
-# print("*" * 100)
-# print("load_dt=", load_dt)
-# print("*" * 100)
+exit_code = 0 # O 이면 정상 종료, 1 이면 비정상 종료
 
-# movie_df = spark.read.parquet('/Users/jacob/data/zep_movie.parquet')
-# movie_df.createOrReplaceTempView("temp_movie")
+def save_meta(df: DataFrame, meta_path: str):
+    df.write.mode("overwrite").parquet(meta_path)
+    logging.info(f"메타 저장 완료 : {meta_path}")
 
-# df1 = spark.sql("SELECT * FROM temp_movie WHERE multiMovieYn IS NULL")
-# df2 = spark.sql("SELECT * FROM temp_movie WHERE repNationCd IS NULL")
-# df1.createOrReplaceTempView("multi_null")
-# df2.createOrReplaceTempView("nation_null")
-
-# sql = """
-# SELECT
-#   COALESCE(m.movieCd, n.movieCd) AS movieCd,
-#   COALESCE(m.movieNm, n.movieNm) AS movieNm,
-#   m.multiMovieYn,
-#   n.repNationCd
-# FROM (
-#   -- multi 기준 정제 쿼리
-#   WITH null_case AS (
-#     SELECT movieCd, movieNm, multiMovieYn, repNationCd
-#     FROM nation_null
-#     WHERE multiMovieYn IS NULL
-#   ),
-#   non_null_case AS (
-#     SELECT movieCd, movieNm, multiMovieYn, repNationCd
-#     FROM nation_null
-#     WHERE multiMovieYn IS NOT NULL
-#   ),
-#   clean_null_case AS (
-#     SELECT n.*
-#     FROM null_case n
-#     LEFT JOIN non_null_case nn ON n.movieCd = nn.movieCd
-#     WHERE nn.movieCd IS NULL
-#   )
-#   SELECT * FROM non_null_case
-#   UNION
-#   SELECT * FROM clean_null_case
-# ) m
-# FULL OUTER JOIN (
-#   -- nation 기준 정제 쿼리
-#   WITH null_case AS (
-#     SELECT movieCd, movieNm, multiMovieYn, repNationCd
-#     FROM multi_null
-#     WHERE repNationCd IS NULL
-#   ),
-#   non_null_case AS (
-#     SELECT movieCd, movieNm, multiMovieYn, repNationCd
-#     FROM multi_null
-#     WHERE repNationCd IS NOT NULL
-#   ),
-#   clean_null_case AS (
-#     SELECT n.*
-#     FROM null_case n
-#     LEFT JOIN non_null_case nn ON n.movieCd = nn.movieCd
-#     WHERE nn.movieCd IS NULL
-#   )
-#   SELECT * FROM non_null_case
-#   UNION
-#   SELECT * FROM clean_null_case
-# ) n
-# ON m.movieCd = n.movieCd
-# """
-
-# final_df= spark.sql(sql)
-# final_df.createOrReplaceTempView("temp_join_unique")
-# final_df.count()
-
-
-
-# TODO 나머지 코드 넣기
-# final_df.show()
-# print("count=", final_df.count())
-
-exit_code = 0
-
-try:
-    #{{ds_nodash}} append $META_PATH
+try:    
     if len(sys.argv) != 4:
-      raise ValueError("필수 인자가 누락 되었습니다")
-
+        raise ValueError("필수 인자가 누락되었습니다")
+    
     raw_path, mode, meta_path = sys.argv[1:4]
-    # load_dt = sys.argv[1]
-    # mode = sys.argv[2]
-    # meta_path = sys.argv[3]
-    #/Users/jacob/data/movie_after/dailyboxoffice/dt={load_dt}
-    raw_df = spark.read.parquet(raw_path)
-    raw_df.show()
-    raw_df.select("movieCd", "multiMovieYn", "repNationCd").show()
+    
+    meta_today = spark.read.parquet(raw_path).select("movieCd","multiMovieYn", "repNationCd")
+    
+    if mode == "create":
+        spark.read.parquet(raw_path).createOrReplaceTempView("temp_meta_today")
+        meta_today = spark.sql("""
+            SELECT DISTINCT movieCd, multiMovieYn, repNationCd
+            FROM (
+                SELECT
+                    movieCd,
+                    NULLIF(multiMovieYn, 'Unclassified') AS multiMovieYn,
+                    NULLIF(repNationCd, 'Unclassified') AS repNationCd
+                FROM temp_meta_today
+            )
+            WHERE multiMovieYn IS NOT NULL AND repNationCd IS NOT NULL
+        """)
+        save_meta(meta_today, meta_path)
+    
+    elif mode == "append":
+        meta_yesterday = spark.read.parquet(meta_path)
+        meta_yesterday.createOrReplaceTempView("temp_meta_yesterday")
 
+       
+        spark.read.parquet(raw_path).createOrReplaceTempView("raw_meta_today")
+        
+        spark.sql("""
+            CREATE OR REPLACE TEMP VIEW temp_meta_today AS
+            SELECT DISTINCT movieCd, multiMovieYn, repNationCd
+            FROM (
+                SELECT
+                    movieCd,
+                    NULLIF(multiMovieYn, 'Unclassified') AS multiMovieYn,
+                    NULLIF(repNationCd, 'Unclassified') AS repNationCd
+                FROM raw_meta_today
+            )
+            WHERE multiMovieYn IS NOT NULL AND repNationCd IS NOT NULL
+        """)
+    
+        updated_meta = spark.sql("""
+            SELECT 
+                COALESCE(y.movieCd, t.movieCd) AS movieCd,
+                COALESCE(y.multiMovieYn, t.multiMovieYn) AS multiMovieYn,
+                COALESCE(y.repNationCd, t.repNationCd) AS repNationCd
+            FROM temp_meta_yesterday y
+            FULL OUTER JOIN (
+                SELECT DISTINCT movieCd, multiMovieYn, repNationCd
+                FROM (
+                    SELECT
+                        movieCd,
+                        NULLIF(multiMovieYn, 'Unclassified') AS multiMovieYn,
+                        NULLIF(repNationCd, 'Unclassified') AS repNationCd
+                    FROM raw_meta_today
+                )
+                WHERE multiMovieYn IS NOT NULL AND repNationCd IS NOT NULL
+            ) t
+            ON y.movieCd = t.movieCd
+            """)
+        updated_meta.createOrReplaceTempView("temp_meta_update")
+        
+        # ASSERT_TRUE - updated meta 는 항상 원천 소스 보다 크면 정산 / else 실패
+        spark.sql("""
+        SELECT ASSERT_TRUE(
+                COALESCE((SELECT COUNT(*) FROM temp_meta_update), 0) >= COALESCE((SELECT COUNT(*) FROM temp_meta_yesterday), 0)
+                AND
+                COALESCE((SELECT COUNT(*) FROM temp_meta_update), 0) >= COALESCE((SELECT COUNT(*) FROM temp_meta_today), 0)
+                ) AS is_valid
+        
+        /*
+        WITH counts AS (
+            SELECT 
+                (SELECT COUNT(*) FROM temp_meta_update) AS count_update,
+                (SELECT COUNT(*) FROM temp_meta_yesterday) AS count_yesterday,
+                (SELECT COUNT(*) FROM temp_meta_today) AS count_today
+        )
+        SELECT ASSERT_TRUE(
+            count_update >= count_yesterday AND count_update >= count_today
+        ) AS is_valid
+        FROM counts
+        */
+        """)
+        
+        save_meta(updated_meta, meta_path)
+    else:
+        raise ValueError(f"알 수 없는 MODE: {mode}")
+        
+    
 except Exception as e:
-    logging.error(f"오류:{str(e)}")
+    logging.error(f"오류 : {str(e)}")
     exit_code = 1
 finally:
     spark.stop()
