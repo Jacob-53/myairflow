@@ -27,15 +27,22 @@ try:
     if mode == "create":
         spark.read.parquet(raw_path).createOrReplaceTempView("temp_meta_today")
         meta_today = spark.sql("""
-            SELECT DISTINCT movieCd, multiMovieYn, repNationCd
-            FROM (
-                SELECT
-                    movieCd,
-                    NULLIF(multiMovieYn, 'Unclassified') AS multiMovieYn,
-                    NULLIF(repNationCd, 'Unclassified') AS repNationCd
-                FROM temp_meta_today
-            )
-            WHERE multiMovieYn IS NOT NULL AND repNationCd IS NOT NULL
+            WITH cleaned AS (
+            SELECT
+                movieCd,
+                NULLIF(multiMovieYn, 'Unclassified') AS multiMovieYn,
+                NULLIF(repNationCd, 'Unclassified') AS repNationCd
+            FROM temp_meta_today
+        ),
+        grouped AS (
+            SELECT
+                movieCd,
+                COALESCE(MAX(multiMovieYn)) AS multiMovieYn,
+                COALESCE(MAX(repNationCd)) AS repNationCd
+            FROM cleaned
+            GROUP BY movieCd
+        )
+        SELECT * FROM grouped
         """)
         save_meta(meta_today, meta_path)
     
@@ -48,34 +55,31 @@ try:
         
         spark.sql("""
             CREATE OR REPLACE TEMP VIEW temp_meta_today AS
-            SELECT DISTINCT movieCd, multiMovieYn, repNationCd
-            FROM (
+            WITH cleaned AS (
                 SELECT
                     movieCd,
                     NULLIF(multiMovieYn, 'Unclassified') AS multiMovieYn,
                     NULLIF(repNationCd, 'Unclassified') AS repNationCd
                 FROM raw_meta_today
+            ),
+            grouped AS (
+                SELECT
+                    movieCd,
+                    COALESCE(MAX(multiMovieYn)) AS multiMovieYn,
+                    COALESCE(MAX(repNationCd)) AS repNationCd
+                FROM cleaned
+                GROUP BY movieCd
             )
-            WHERE multiMovieYn IS NOT NULL AND repNationCd IS NOT NULL
-        """)
+            SELECT * FROM grouped
+            """)
     
         updated_meta = spark.sql("""
             SELECT 
-                COALESCE(y.movieCd, t.movieCd) AS movieCd,
-                COALESCE(y.multiMovieYn, t.multiMovieYn) AS multiMovieYn,
-                COALESCE(y.repNationCd, t.repNationCd) AS repNationCd
+            COALESCE(y.movieCd, t.movieCd) AS movieCd,
+            COALESCE(y.multiMovieYn, t.multiMovieYn) AS multiMovieYn,
+            COALESCE(y.repNationCd, t.repNationCd) AS repNationCd
             FROM temp_meta_yesterday y
-            FULL OUTER JOIN (
-                SELECT DISTINCT movieCd, multiMovieYn, repNationCd
-                FROM (
-                    SELECT
-                        movieCd,
-                        NULLIF(multiMovieYn, 'Unclassified') AS multiMovieYn,
-                        NULLIF(repNationCd, 'Unclassified') AS repNationCd
-                    FROM raw_meta_today
-                )
-                WHERE multiMovieYn IS NOT NULL AND repNationCd IS NOT NULL
-            ) t
+            FULL OUTER JOIN temp_meta_today t
             ON y.movieCd = t.movieCd
             """)
         updated_meta.createOrReplaceTempView("temp_meta_update")

@@ -3,6 +3,7 @@ from datetime import datetime, timedelta
 from airflow.operators.bash import BashOperator
 from airflow.operators.empty import EmptyOperator
 from airflow.operators.python import BranchPythonOperator
+from airflow.utils.trigger_rule import TriggerRule
 
 DAG_ID = "movie_spark"
 
@@ -28,7 +29,7 @@ with DAG(
     RAW_BASE = "/Users/jacob/data/movie_after/dailyboxoffice"
 
     start = EmptyOperator(task_id="start")
-    end = EmptyOperator(task_id="end", trigger_rule="all_done")
+    end = EmptyOperator(task_id="end", trigger_rule=TriggerRule.NONE_FAILED)
     
     def check_exists_meta():
         import os
